@@ -1,11 +1,12 @@
 use std::{
     io::{Read, Write},
     net::TcpStream,
-    ops::Deref,
 };
 
+use log::{debug, error, info};
 use quickcheck::Arbitrary;
 
+#[derive(Debug)]
 enum ExecutionError {
     InvalidRead,
     InvalidWrite,
@@ -94,12 +95,14 @@ impl Command {
     }
 }
 
+#[derive(Debug)]
 enum ReadError {
     Error,
     Invalid,
 }
 
 // I can't re-use Result because of the foreign impl restrictions
+#[derive(Debug)]
 enum Response {
     Success(u8),
     Failure(ReadError),
@@ -158,15 +161,18 @@ impl Arbitrary for Command {
 }
 
 fn main() {
+    env_logger::init();
+
     let mut state = State::new();
 
     let mut stream =
         TcpStream::connect("127.0.0.1:10203").expect("connection should be successful");
 
     let mut g = quickcheck::Gen::new(256);
+    let mut n_commands = 0;
     loop {
         let command = Command::arbitrary(&mut g);
-        println!("generated command: {:?}", command);
+        debug!("generated command: {:?}", command);
 
         let local_result = state.execute_command(&command);
         let remote_result = execute_command(&mut stream, &command);
@@ -175,14 +181,28 @@ fn main() {
             // TODO add better reporting
             (Ok(left), Ok(Response::Success(right))) => {
                 if left != right {
-                    println!("divergence!");
+                    error!("results diverged! expected {}, received {}", left, right);
+                    info!("number of commands processed: {}", n_commands);
                     return;
                 }
             }
-            _ => {
-                println!("divergence!");
+            (left, Err(e)) => {
+                error!("local result: {:?}", left);
+                error!("remote communication error: {}", e);
+                info!("number of commands processed: {}", n_commands);
+                return;
+            }
+            (left, Ok(right)) => {
+                error!(
+                    "results diverged! expected {:?}, received {:?}",
+                    left, right
+                );
+                info!("number of commands processed: {}", n_commands);
+
                 return;
             }
         }
+
+        n_commands += 1;
     }
 }
