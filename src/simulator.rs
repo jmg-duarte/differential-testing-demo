@@ -1,9 +1,13 @@
 use quickcheck::Arbitrary;
 
+/// Simulator errors.
 #[derive(Debug)]
-pub enum SimulatorError {
+pub enum Error {
+    /// Read out of bounds.
     InvalidRead,
+    /// Write out of bounds.
     InvalidWrite,
+    /// Integer overflow.
     Overflow,
 }
 
@@ -17,21 +21,21 @@ impl Simulator {
     }
 
     /// Execute a [`Command`] on the [`Simulator`].
-    pub fn execute_command(&mut self, command: &Command) -> Result<u8, SimulatorError> {
+    pub fn execute_command(&mut self, command: &Command) -> Result<u8, Error> {
         match command {
             Command::Read(location) => self
                 .0
                 // SAFETY: usize is bigger than u8
                 .get(*location as usize)
                 .copied()
-                .ok_or(SimulatorError::InvalidRead),
+                .ok_or(Error::InvalidRead),
             Command::Write(location, value) => {
                 // SAFETY: usize is bigger than u8
                 if let Some(stored_value) = self.0.get_mut(*location as usize) {
                     *stored_value = *value;
                     Ok(*value)
                 } else {
-                    Err(SimulatorError::InvalidWrite)
+                    Err(Error::InvalidWrite)
                 }
             }
             // `sum` and `product` don't check for overflow, they'll panic in debug and wrap in release
@@ -39,22 +43,22 @@ impl Simulator {
             Command::Sum => {
                 // .sum doesn't check for overflow
                 let mut acc: u8 = 0;
-                for v in self.0.iter() {
+                for v in &self.0 {
                     if let Some(res) = acc.checked_add(*v) {
-                        acc = res
+                        acc = res;
                     } else {
-                        return Err(SimulatorError::Overflow);
+                        return Err(Error::Overflow);
                     }
                 }
                 Ok(acc)
             }
             Command::Product => {
                 let mut acc: u8 = 1;
-                for v in self.0.iter() {
+                for v in &self.0 {
                     if let Some(res) = acc.checked_mul(*v) {
-                        acc = res
+                        acc = res;
                     } else {
-                        return Err(SimulatorError::Overflow);
+                        return Err(Error::Overflow);
                     }
                 }
                 Ok(acc)
